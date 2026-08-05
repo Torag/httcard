@@ -1,0 +1,8 @@
+{
+  "name": "Hasnain Travels & Tours Ticketing Portal",
+  "description": "An interactive digital form and printer for Hasnain Travels & Tours air tickets, configured for pixel-perfect A4 printing and PDF saving.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
