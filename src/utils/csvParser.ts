@@ -142,9 +142,13 @@ export function parseCsvToRecords(
   logo: string = DEFAULT_HASNAIN_LOGO,
   signature: string = ''
 ): CsvImportRecord[] {
+  if (!csvText || csvText.length > 10 * 1024 * 1024) return []; // 10MB safety cap
   const finalLogo = logo || DEFAULT_HASNAIN_LOGO;
-  const rows = parseCSVText(csvText);
+  let rows = parseCSVText(csvText);
   if (rows.length < 2) return [];
+  if (rows.length > 2500) {
+    rows = rows.slice(0, 2500); // Cap max parsed rows to 2500 to prevent browser memory freeze
+  }
 
   // Find header indices
   const headers = rows[0].map(h => h.trim().toLowerCase());
