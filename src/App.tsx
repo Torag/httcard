@@ -160,7 +160,10 @@ export default function App() {
         
         const sheetsCfg = getGoogleSheetsConfig();
         if (sheetsCfg.scriptUrl && sheetsCfg.autoSync) {
-          syncTicketsToGoogleSheets(payload, sheetsCfg.scriptUrl);
+          const syncRes = await syncTicketsToGoogleSheets(payload, sheetsCfg.scriptUrl);
+          if (syncRes.success) {
+            triggerToast('Voucher saved and synced to Google Sheets!');
+          }
         }
       }
     } catch (e: any) {
@@ -256,6 +259,14 @@ export default function App() {
       triggerToast(`Saved ${newTickets.length} voucher(s) from CSV to history.`);
       if (newTickets.length > 0) {
         setTicketData(newTickets[0]);
+      }
+
+      const sheetsCfg = getGoogleSheetsConfig();
+      if (sheetsCfg.scriptUrl && sheetsCfg.autoSync) {
+        const syncRes = await syncTicketsToGoogleSheets(newTickets, sheetsCfg.scriptUrl);
+        if (syncRes.success) {
+          triggerToast(`Synced ${newTickets.length} voucher(s) to Google Sheets!`);
+        }
       }
     } catch (e: any) {
       console.error('Batch save error:', e.message || 'Unknown error');
