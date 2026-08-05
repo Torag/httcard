@@ -898,6 +898,7 @@ export default function App() {
         isOpen={isSheetsModalOpen}
         onClose={() => setIsSheetsModalOpen(false)}
         historyTickets={history}
+        onBatchSaveTickets={handleBatchSaveTickets}
         onToast={triggerToast}
       />
 

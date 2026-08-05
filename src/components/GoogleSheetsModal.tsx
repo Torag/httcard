@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { Table, Save, ExternalLink, CheckCircle, AlertCircle, RefreshCw, X, Copy, Check } from 'lucide-react';
-import { getGoogleSheetsConfig, saveGoogleSheetsConfig, syncTicketsToGoogleSheets } from '../services/googleSheets';
+import { Table, Save, ExternalLink, CheckCircle, AlertCircle, RefreshCw, X, Copy, Check, Download } from 'lucide-react';
+import { getGoogleSheetsConfig, saveGoogleSheetsConfig, syncTicketsToGoogleSheets, fetchTicketsFromGoogleSheets } from '../services/googleSheets';
 import { TicketData } from '../types';
 
 interface GoogleSheetsModalProps {
   isOpen: boolean;
   onClose: () => void;
   historyTickets: TicketData[];
+  onBatchSaveTickets: (tickets: TicketData[]) => Promise<void>;
   onToast: (msg: string) => void;
 }
 
-export function GoogleSheetsModal({ isOpen, onClose, historyTickets, onToast }: GoogleSheetsModalProps) {
+export function GoogleSheetsModal({ isOpen, onClose, historyTickets, onBatchSaveTickets, onToast }: GoogleSheetsModalProps) {
   const [config, setConfig] = useState(getGoogleSheetsConfig());
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
   if (!isOpen) return null;
@@ -92,6 +94,26 @@ function doPost(e) {
     setTimeout(() => setCopiedCode(false), 2500);
   };
 
+  const handleFetchFromSheets = async () => {
+    if (!config.scriptUrl) {
+      onToast('Please enter a valid Google Apps Script Web App URL first.');
+      return;
+    }
+
+    setIsFetching(true);
+    const res = await fetchTicketsFromGoogleSheets(config.scriptUrl);
+    setIsFetching(false);
+
+    if (res.success && res.tickets.length > 0) {
+      await onBatchSaveTickets(res.tickets);
+      onToast(`Successfully loaded ${res.tickets.length} ticket(s) from Google Sheets into History!`);
+    } else if (res.success) {
+      onToast('No ticket records found in Google Sheets.');
+    } else {
+      onToast(`Fetch failed: ${res.message}`);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white border border-slate-300 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -157,23 +179,44 @@ function doPost(e) {
           </div>
 
           {/* Sync Actions */}
-          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between gap-3">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-bold text-emerald-900">
-                Bulk Export History to Google Sheets
-              </span>
-              <span className="text-[11px] text-emerald-700 font-medium">
-                Sends all {historyTickets.length} local ticket records directly into your sheet as rows.
-              </span>
+          <div className="flex flex-col gap-3">
+            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-bold text-emerald-900">
+                  Bulk Export History to Google Sheets
+                </span>
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  Sends all {historyTickets.length} local ticket records directly into your sheet as rows.
+                </span>
+              </div>
+              <button
+                onClick={handleSyncAllNow}
+                disabled={isSyncing || !config.scriptUrl}
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm shadow-emerald-700/20 transition-all flex items-center gap-2 cursor-pointer disabled:bg-slate-400 shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Exporting...' : 'Export All Now'}
+              </button>
             </div>
-            <button
-              onClick={handleSyncAllNow}
-              disabled={isSyncing || !config.scriptUrl}
-              className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm shadow-emerald-700/20 transition-all flex items-center gap-2 cursor-pointer disabled:bg-slate-400 shrink-0"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Exporting...' : 'Export All Now'}
-            </button>
+
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-bold text-blue-900">
+                  Import / Sync from Google Sheets to App History
+                </span>
+                <span className="text-[11px] text-blue-700 font-medium">
+                  Fetches all rows from your Google Sheet and loads them into your History list for viewing & editing.
+                </span>
+              </div>
+              <button
+                onClick={handleFetchFromSheets}
+                disabled={isFetching || !config.scriptUrl}
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm shadow-blue-700/20 transition-all flex items-center gap-2 cursor-pointer disabled:bg-slate-400 shrink-0"
+              >
+                <Download className={`w-3.5 h-3.5 ${isFetching ? 'animate-bounce' : ''}`} />
+                {isFetching ? 'Loading...' : 'Import from Sheets'}
+              </button>
+            </div>
           </div>
 
           {/* Apps Script Setup Instructions */}
