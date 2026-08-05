@@ -4,6 +4,8 @@ import { sampleTickets } from './data';
 import { TicketPreview } from './components/TicketPreview';
 import { MobileForm } from './components/MobileForm';
 import { CsvImportModal } from './components/CsvImportModal';
+import { GoogleSheetsModal } from './components/GoogleSheetsModal';
+import { syncTicketsToGoogleSheets, getGoogleSheetsConfig } from './services/googleSheets';
 import { 
   CheckCircle, 
   Plane,
@@ -16,7 +18,8 @@ import {
   Search,
   MoreVertical,
   Check,
-  CircleCheck
+  CircleCheck,
+  Table
 } from 'lucide-react';
 import { useTicketStore } from './hooks/useTicketStore';
 import { DEFAULT_HASNAIN_LOGO } from './assets/defaultLogo';
@@ -34,6 +37,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedTickets, setSelectedTickets] = useState<Set<string>>(new Set());
   const [isCsvModalOpen, setIsCsvModalOpen] = useState<boolean>(false);
+  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState<boolean>(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState<boolean>(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState<boolean>(false);
   const [isHistoryMenuOpen, setIsHistoryMenuOpen] = useState<boolean>(false);
@@ -153,6 +157,11 @@ export default function App() {
       if (payload) {
         setTicketData(payload);
         triggerToast('Voucher saved successfully to local storage!');
+        
+        const sheetsCfg = getGoogleSheetsConfig();
+        if (sheetsCfg.scriptUrl && sheetsCfg.autoSync) {
+          syncTicketsToGoogleSheets(payload, sheetsCfg.scriptUrl);
+        }
       }
     } catch (e: any) {
       console.error('Save ticket error:', e.message || 'Unknown error');
@@ -394,6 +403,14 @@ export default function App() {
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSheetsModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-emerald-800/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
+              title="Connect & Sync to Google Sheets"
+            >
+              <Table className="w-3.5 h-3.5 text-emerald-300" />
+              Google Sheets
+            </button>
             <button
               onClick={() => setIsCsvModalOpen(true)}
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-emerald-600/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
@@ -864,6 +881,14 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Google Sheets Sync Modal */}
+      <GoogleSheetsModal
+        isOpen={isSheetsModalOpen}
+        onClose={() => setIsSheetsModalOpen(false)}
+        historyTickets={history}
+        onToast={triggerToast}
+      />
 
     </div>
   );
