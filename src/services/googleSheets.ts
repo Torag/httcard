@@ -49,10 +49,10 @@ export async function syncTicketsToGoogleSheets(
       message: `Successfully sent ${payload.length} ticket(s) to Google Sheets.`,
     };
   } catch (error: any) {
-    console.error('Google Sheets sync error:', error);
+    console.error('Google Sheets sync error:', error?.message || '[REDACTED_ERROR]');
     return {
       success: false,
-      message: error.message || 'Failed to connect to Google Sheets Web App.',
+      message: error?.message || 'Failed to connect to Google Sheets Web App.',
     };
   }
 }
@@ -127,11 +127,11 @@ export async function fetchTicketsFromGoogleSheets(
       message: `Fetched ${mappedTickets.length} ticket(s) from Google Sheets.`,
     };
   } catch (error: any) {
-    console.error('Fetch Google Sheets error:', error);
+    console.error('Fetch Google Sheets error:', error?.message || '[REDACTED_ERROR]');
     return {
       success: false,
       tickets: [],
-      message: error.message || 'Failed to fetch tickets from Google Sheets.',
+      message: error?.message || 'Failed to fetch tickets from Google Sheets.',
     };
   }
 }
