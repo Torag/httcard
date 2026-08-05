@@ -191,9 +191,19 @@ export function saveTicketRecord(ticket: TicketData): TicketData[] {
     validTicket.paxNames = ['', '', '', ''];
   }
 
-  const existingIdx = db.tickets.findIndex((t) => t.id === validTicket.id);
+  const existingIdx = db.tickets.findIndex((t) => {
+    if (t.id && validTicket.id && t.id === validTicket.id) return true;
+    if (t.ticketNo && validTicket.ticketNo && t.ticketNo === validTicket.ticketNo) return true;
+    if (t.pnr && validTicket.pnr && t.pnr.trim().toUpperCase() === validTicket.pnr.trim().toUpperCase() && t.customerName === validTicket.customerName) return true;
+    return false;
+  });
+
   if (existingIdx >= 0) {
-    db.tickets[existingIdx] = validTicket;
+    db.tickets[existingIdx] = {
+      ...db.tickets[existingIdx],
+      ...validTicket,
+      id: db.tickets[existingIdx].id
+    };
   } else {
     db.tickets.unshift(validTicket);
   }
@@ -223,9 +233,20 @@ export function saveMultipleTicketRecords(ticketsToSave: TicketData[]): TicketDa
       validTicket.paxNames = ['', '', '', ''];
     }
 
-    const existingIdx = db.tickets.findIndex((t) => t.id === validTicket.id);
+    // Deduplicate by ID, Ticket Number, or PNR (if available)
+    const existingIdx = db.tickets.findIndex((t) => {
+      if (t.id && validTicket.id && t.id === validTicket.id) return true;
+      if (t.ticketNo && validTicket.ticketNo && t.ticketNo === validTicket.ticketNo) return true;
+      if (t.pnr && validTicket.pnr && t.pnr.trim().toUpperCase() === validTicket.pnr.trim().toUpperCase() && t.customerName === validTicket.customerName) return true;
+      return false;
+    });
+
     if (existingIdx >= 0) {
-      db.tickets[existingIdx] = validTicket;
+      db.tickets[existingIdx] = {
+        ...db.tickets[existingIdx],
+        ...validTicket,
+        id: db.tickets[existingIdx].id // preserve existing local ID
+      };
     } else {
       db.tickets.unshift(validTicket);
     }
