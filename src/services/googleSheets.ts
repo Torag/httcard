@@ -16,7 +16,8 @@ export function getGoogleSheetsConfig(): GoogleSheetsConfig {
   } catch (e) {
     console.error('Error reading Google Sheets config:', e);
   }
-  return { scriptUrl: 'https://script.google.com/macros/s/AKfycbxxTsPwGTE1Rrxt2M2QgscDuQPqtRze5-E9Z_UfXTA4U-gtXFImTzgO-uYnsCYpCSmJ/exec', autoSync: true };
+  const defaultUrl = (import.meta as any).env?.VITE_GOOGLE_SHEETS_SCRIPT_URL || '';
+  return { scriptUrl: defaultUrl, autoSync: Boolean(defaultUrl) };
 }
 
 export function saveGoogleSheetsConfig(config: GoogleSheetsConfig): void {
