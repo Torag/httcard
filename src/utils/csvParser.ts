@@ -136,14 +136,43 @@ export function parseCSVText(csvText: string): string[][] {
   return lines;
 }
 
+export type SalesAmountImportMode = 'csv' | 'gross' | 'net_plus_markup';
+
+export interface CsvImportOptions {
+  groupByPnr?: boolean;
+  logo?: string;
+  signature?: string;
+  salesAmountColumn?: string; // Specific header name selected by user, or empty for auto-detect
+  salesAmountMode?: SalesAmountImportMode; // 'csv' (use column), 'gross' (set equal to gross), 'net_plus_markup'
+  customMarkupBDT?: string; // Optional custom markup per ticket
+}
+
+export function extractCsvHeaders(csvText: string): string[] {
+  if (!csvText) return [];
+  const rows = parseCSVText(csvText);
+  if (rows.length === 0) return [];
+  return rows[0].map(h => h.trim()).filter(Boolean);
+}
+
 export function parseCsvToRecords(
   csvText: string,
-  groupByPnr: boolean = false,
+  optionsOrGroupByPnr: boolean | CsvImportOptions = false,
   logo: string = DEFAULT_HASNAIN_LOGO,
   signature: string = ''
 ): CsvImportRecord[] {
   if (!csvText || csvText.length > 10 * 1024 * 1024) return []; // 10MB safety cap
-  const finalLogo = logo || DEFAULT_HASNAIN_LOGO;
+
+  const options: CsvImportOptions = typeof optionsOrGroupByPnr === 'boolean'
+    ? { groupByPnr: optionsOrGroupByPnr, logo, signature }
+    : optionsOrGroupByPnr;
+
+  const groupByPnr = !!options.groupByPnr;
+  const finalLogo = options.logo || logo || DEFAULT_HASNAIN_LOGO;
+  const finalSignature = options.signature || signature || '';
+  const salesAmountMode = options.salesAmountMode || 'csv';
+  const salesAmountColumn = options.salesAmountColumn?.trim().toLowerCase() || '';
+  const customMarkupBDT = options.customMarkupBDT ? parseFloat(options.customMarkupBDT) || 0 : 0;
+
   let rows = parseCSVText(csvText);
   if (rows.length < 2) return [];
   if (rows.length > 2500) {
@@ -190,7 +219,38 @@ export function parseCsvToRecords(
   const idxCommission = getIndex(['commission', 'comm']);
   const idxAit = getIndex(['ait']);
   const idxNet = getIndex(['net amount', 'net']);
-  const idxSalesAmount = getIndex(['sales amount', 'sales']);
+
+  // Handle Sales Amount (BDT) specific column selection or auto-detection
+  let idxSalesAmount = -1;
+  if (salesAmountColumn) {
+    idxSalesAmount = headers.findIndex(h => h === salesAmountColumn);
+  }
+  if (idxSalesAmount < 0) {
+    idxSalesAmount = getIndex([
+      'sales amount (bdt)',
+      'sales amount bdt',
+      'sales amount',
+      'sales (bdt)',
+      'sales bdt',
+      'sales amt',
+      'sales_amount_bdt',
+      'sales_amount',
+      'sale amount (bdt)',
+      'sale amount bdt',
+      'sale amount',
+      'sale amt',
+      'selling price (bdt)',
+      'selling price',
+      'selling amount (bdt)',
+      'selling amount',
+      'sales',
+      'sale',
+      'client fare',
+      'customer fare',
+      'bdt sales'
+    ]);
+  }
+
   const idxMarkUp = getIndex(['mark up', 'markup', 'margin', 'contribution margin', 'contribution_margin', 'contribution', 'cm']);
   const idxOfficePayment = getIndex(['office payment', 'office', 'net', 'payment']);
   const idxRef = getIndex(['ref', 'reference', 'c/o']);
@@ -269,6 +329,32 @@ export function parseCsvToRecords(
         r.paxName4 || '',
       ];
 
+      let effectiveMargin = marginNum;
+      if (salesAmountMode === 'net_plus_markup' && customMarkupBDT > 0) {
+        effectiveMargin = customMarkupBDT;
+      }
+
+      let effectiveSalesAmount = '';
+      let isGrossLocked = parseBool(r.keepGrossFare);
+
+      if (salesAmountMode === 'gross') {
+        isGrossLocked = true;
+        effectiveSalesAmount = totalNum > 0 ? Math.round(totalNum).toString() : (base + taxNum > 0 ? Math.round(base + taxNum).toString() : '');
+      } else if (salesAmountMode === 'net_plus_markup') {
+        const calculated = netNum + effectiveMargin;
+        effectiveSalesAmount = calculated > 0 ? Math.round(calculated).toString() : '';
+      } else {
+        // 'csv' mode
+        const fromCsv = roundedText(r.salesAmount);
+        if (fromCsv) {
+          effectiveSalesAmount = fromCsv;
+        } else if (effectiveMargin > 0 && netNum > 0) {
+          effectiveSalesAmount = Math.round(netNum + effectiveMargin).toString();
+        } else if (totalNum > 0) {
+          effectiveSalesAmount = Math.round(totalNum).toString();
+        }
+      }
+
       const cardNo = r.cardNo || Math.floor(100000 + Math.random() * 900000).toString();
       const detectedPaxCount = paxNames.filter(Boolean).length;
       const paxCount = r.pax || (detectedPaxCount > 0 ? detectedPaxCount.toString() : '1');
@@ -288,7 +374,7 @@ export function parseCsvToRecords(
         sectors: formattedSectors,
         returnDate: parseCsvDate(r.returnDate),
         ticketNo: r.ticketNo || '',
-        salesAmount: roundedText(r.salesAmount) || ((netNum + marginNum) > 0 ? Math.round(netNum + marginNum).toString() : (totalNum > 0 ? Math.round(totalNum).toString() : '')),
+        salesAmount: effectiveSalesAmount,
         baseFare: base > 0 ? Math.round(base).toString() : '',
         tax: taxNum > 0 ? Math.round(taxNum).toString() : '',
         gross: roundedText(r.gross) || (totalNum > 0 ? Math.round(totalNum).toString() : (base + taxNum > 0 ? Math.round(base + taxNum).toString() : '')),
@@ -298,18 +384,19 @@ export function parseCsvToRecords(
         cardNo: cardNo,
         pax: paxCount,
         logo: finalLogo,
-        issuerSignature: signature,
+        issuerSignature: finalSignature,
         foreignCurrency: r.foreignCurrency || 'USD',
         foreignAmount: cleanNumber(r.foreignAmount),
         exchangeRate: cleanNumber(r.exchangeRate),
-        contributionMargin: roundedText(r.contributionMargin) || (marginNum > 0 ? Math.round(marginNum).toString() : ''),
-        keepGrossFare: parseBool(r.keepGrossFare),
+        contributionMargin: roundedText(r.contributionMargin) || (effectiveMargin > 0 ? Math.round(effectiveMargin).toString() : ''),
+        keepGrossFare: isGrossLocked,
         createdAt: new Date().toISOString(),
       };
 
       return {
         ...r,
         id: ticketData.id,
+        salesAmount: effectiveSalesAmount,
         ticketData,
       };
     });
@@ -354,6 +441,34 @@ export function parseCsvToRecords(
         const netNum = totalBase + totalTax - commNum + aitNum;
         const cardNo = first.cardNo || Math.floor(100000 + Math.random() * 900000).toString();
 
+        let effectiveMargin = totalMargin;
+        if (salesAmountMode === 'net_plus_markup' && customMarkupBDT > 0) {
+          effectiveMargin = customMarkupBDT * chunk.length;
+        }
+
+        let effectiveSalesAmount = '';
+        let isGrossLocked = parseBool(first.keepGrossFare);
+
+        if (salesAmountMode === 'gross') {
+          isGrossLocked = true;
+          effectiveSalesAmount = totalFareSum > 0 ? Math.round(totalFareSum).toString() : (totalBase + totalTax > 0 ? Math.round(totalBase + totalTax).toString() : '');
+        } else if (salesAmountMode === 'net_plus_markup') {
+          const calculated = netNum + effectiveMargin;
+          effectiveSalesAmount = calculated > 0 ? Math.round(calculated).toString() : '';
+        } else {
+          // 'csv' mode
+          const sumCsvSales = chunk.reduce((sum, item) => sum + (parseFloat(cleanNumber(item.salesAmount)) || 0), 0);
+          if (sumCsvSales > 0) {
+            effectiveSalesAmount = Math.round(sumCsvSales).toString();
+          } else if (roundedText(first.salesAmount)) {
+            effectiveSalesAmount = roundedText(first.salesAmount);
+          } else if (effectiveMargin > 0 && netNum > 0) {
+            effectiveSalesAmount = Math.round(netNum + effectiveMargin).toString();
+          } else if (totalFareSum > 0) {
+            effectiveSalesAmount = Math.round(totalFareSum).toString();
+          }
+        }
+
         const custName = chunk.length > 1 
           ? `${first.name} (+${chunk.length - 1} pax)`
           : (first.name || 'Client');
@@ -373,7 +488,7 @@ export function parseCsvToRecords(
           sectors: formattedSectors,
           returnDate: parseCsvDate(first.returnDate),
           ticketNo: ticketNos,
-          salesAmount: roundedText(first.salesAmount) || ((netNum + totalMargin) > 0 ? Math.round(netNum + totalMargin).toString() : (totalFareSum > 0 ? Math.round(totalFareSum).toString() : '')),
+          salesAmount: effectiveSalesAmount,
           baseFare: totalBase > 0 ? Math.round(totalBase).toString() : '',
           tax: totalTax > 0 ? Math.round(totalTax).toString() : '',
           gross: roundedText(first.gross) || (totalFareSum > 0 ? Math.round(totalFareSum).toString() : (totalBase + totalTax > 0 ? Math.round(totalBase + totalTax).toString() : '')),
@@ -383,12 +498,12 @@ export function parseCsvToRecords(
           cardNo: cardNo,
           pax: first.pax || chunk.length.toString(),
           logo: finalLogo,
-          issuerSignature: signature,
+          issuerSignature: finalSignature,
           foreignCurrency: first.foreignCurrency || 'USD',
           foreignAmount: cleanNumber(first.foreignAmount),
           exchangeRate: cleanNumber(first.exchangeRate),
-          contributionMargin: roundedText(first.contributionMargin) || (totalMargin > 0 ? Math.round(totalMargin).toString() : ''),
-          keepGrossFare: parseBool(first.keepGrossFare),
+          contributionMargin: roundedText(first.contributionMargin) || (effectiveMargin > 0 ? Math.round(effectiveMargin).toString() : ''),
+          keepGrossFare: isGrossLocked,
           createdAt: new Date().toISOString(),
         };
 
@@ -418,7 +533,7 @@ export function parseCsvToRecords(
           box2Remarks: first.box2Remarks,
           phone: first.phone,
           returnDate: first.returnDate,
-          salesAmount: first.salesAmount,
+          salesAmount: effectiveSalesAmount,
           gross: first.gross,
           commission: first.commission,
           ait: first.ait,
@@ -439,7 +554,7 @@ export function parseCsvToRecords(
   }
 }
 
-export const SAMPLE_CSV_CONTENT = `Issue Date,PNR,Name,Ticket Number,Type,Air Code,Travel Date,Route,Base Fare,Tax Amount,Total Fare,Mark Up,Office Payment,Ref
-04-Aug-26,SKIDJD,RAHMAN/MOSTAFIZUR MR,9974883754463,D,BG,06-Aug-26,CGP-DAC,8024,1225,9249,,8715,TORAG
-04-Aug-26,QGSFLK,BEGUM/MAJEDA MRS,9974883754460,I,BG,09-Aug-26,CGP-JED-DAC-CXB,89415,17680,107095,,101157,AYNAT
-04-Aug-26,JTMTXM,HQOUE/MOHAMMED JAHEDUL MR,9974883754459,I,BG,08-Aug-26,CGP-DXB,38233,10699,48932,,46402,AYNAT`;
+export const SAMPLE_CSV_CONTENT = `Issue Date,PNR,Name,Ticket Number,Type,Air Code,Travel Date,Route,Base Fare,Tax Amount,Total Fare,Sales Amount (BDT),Mark Up,Office Payment,Ref
+04-Aug-26,SKIDJD,RAHMAN/MOSTAFIZUR MR,9974883754463,D,BG,06-Aug-26,CGP-DAC,8024,1225,9249,9500,251,8715,TORAG
+04-Aug-26,QGSFLK,BEGUM/MAJEDA MRS,9974883754460,I,BG,09-Aug-26,CGP-JED-DAC-CXB,89415,17680,107095,110000,2905,101157,AYNAT
+04-Aug-26,JTMTXM,HQOUE/MOHAMMED JAHEDUL MR,9974883754459,I,BG,08-Aug-26,CGP-DXB,38233,10699,48932,50000,1068,46402,AYNAT`;

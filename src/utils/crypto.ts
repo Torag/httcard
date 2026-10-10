@@ -3,8 +3,20 @@ const KEY = 0x57; // Simple static key for client-side obfuscation to prevent pl
 export function encrypt(text: string): string {
   if (!text) return '';
   const bytes = new TextEncoder().encode(text);
-  const obfuscated = bytes.map(b => b ^ KEY);
-  return btoa(String.fromCharCode(...obfuscated));
+  const len = bytes.length;
+  const CHUNK_SIZE = 8192;
+  let binary = '';
+
+  for (let i = 0; i < len; i += CHUNK_SIZE) {
+    const end = Math.min(i + CHUNK_SIZE, len);
+    const chunk: number[] = [];
+    for (let j = i; j < end; j++) {
+      chunk.push(bytes[j] ^ KEY);
+    }
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
 }
 
 export function decrypt(encoded: string): string {
