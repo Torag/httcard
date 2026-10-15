@@ -10,8 +10,9 @@ export function useTicketStore() {
     try {
       const loadedTickets = getTickets();
       setTickets(loadedTickets);
-    } catch (e: any) {
-      console.error('Failed to load tickets from central storage', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Failed to load tickets from central storage', msg);
     } finally {
       setLoading(false);
     }
@@ -23,8 +24,9 @@ export function useTicketStore() {
       setTickets(updatedTickets);
       const savedTicket = updatedTickets.find((t) => t.id === ticket.id) || ticket;
       return savedTicket;
-    } catch (e: any) {
-      console.error('Failed to save ticket to central storage', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Failed to save ticket to central storage', msg);
       throw e;
     }
   };
@@ -33,8 +35,9 @@ export function useTicketStore() {
     try {
       const updatedTickets = deleteTicketsRecords(ids);
       setTickets(updatedTickets);
-    } catch (e: any) {
-      console.error('Failed to delete tickets from central storage', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Failed to delete tickets from central storage', msg);
       throw e;
     }
   };
@@ -43,8 +46,9 @@ export function useTicketStore() {
     try {
       const updatedTickets = deleteTicketRecord(id);
       setTickets(updatedTickets);
-    } catch (e: any) {
-      console.error('Failed to delete ticket from central storage', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Failed to delete ticket from central storage', msg);
       throw e;
     }
   };
@@ -54,8 +58,9 @@ export function useTicketStore() {
       const updatedTickets = saveMultipleTicketRecords(ticketsToSave);
       setTickets(updatedTickets);
       return updatedTickets;
-    } catch (e: any) {
-      console.error('Failed to save multiple tickets to central storage', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Failed to save multiple tickets to central storage', msg);
       throw e;
     }
   };

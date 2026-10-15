@@ -5,6 +5,9 @@ import { TicketPreview } from './components/TicketPreview';
 import { MobileForm } from './components/MobileForm';
 import { CsvImportModal } from './components/CsvImportModal';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
+import { SalesDashboardModal } from './components/SalesDashboardModal';
+import { InvoicePreview } from './components/InvoicePreview';
+import { PrinterHelpModal } from './components/PrinterHelpModal';
 import { syncTicketsToGoogleSheets, getGoogleSheetsConfig } from './services/googleSheets';
 import { 
   CheckCircle, 
@@ -19,10 +22,15 @@ import {
   MoreVertical,
   Check,
   CircleCheck,
-  Table
+  Table,
+  BarChart3,
+  FileText,
+  BadgePercent,
+  HelpCircle
 } from 'lucide-react';
 import { useTicketStore } from './hooks/useTicketStore';
 import { DEFAULT_HASNAIN_LOGO } from './assets/defaultLogo';
+import { APP_VERSION } from './version';
 import {
   getSettings,
   updateSettings,
@@ -42,6 +50,11 @@ export default function App() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState<boolean>(false);
   const [isHistoryMenuOpen, setIsHistoryMenuOpen] = useState<boolean>(false);
 
+  // Modes & Modals: Sales Dashboard, Invoice Mode, Printer Help
+  const [viewMode, setViewMode] = useState<'voucher' | 'invoice'>('voucher');
+  const [isDashboardModalOpen, setIsDashboardModalOpen] = useState<boolean>(false);
+  const [isPrinterHelpOpen, setIsPrinterHelpOpen] = useState<boolean>(false);
+
   const filteredHistory = useMemo(() => {
     if (!searchQuery.trim()) return history;
     const q = searchQuery.toLowerCase().trim();
@@ -55,8 +68,9 @@ export default function App() {
   const getPersistedSignature = (): string => {
     try {
       return getSettings().issuerSignature || '';
-    } catch (e: any) {
-      console.error('Signature read error:', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Signature read error:', msg);
       return '';
     }
   };
@@ -78,8 +92,9 @@ export default function App() {
         issuerSignature: settings.issuerSignature || '',
       };
       return defaultTicket;
-    } catch (e: any) {
-      console.error('Initial state load error:', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Initial state load error:', msg);
       return {
         ...sampleTickets[0],
         id: 'active-' + Date.now(),
@@ -96,8 +111,9 @@ export default function App() {
         logo: ticketData.logo,
         issuerSignature: ticketData.issuerSignature,
       });
-    } catch (e: any) {
-      console.error('Settings persist error:', e.message || 'Unknown error');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Settings persist error:', msg);
     }
   }, [ticketData]);
 
@@ -166,9 +182,9 @@ export default function App() {
           }
         }
       }
-    } catch (e: any) {
-      console.error('Save ticket error:', e.message || 'Unknown error');
-      let errMsg = e.message || 'Unknown error';
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Save ticket error:', errMsg);
       triggerToast('Error saving voucher: ' + errMsg);
     }
   };
@@ -246,9 +262,10 @@ export default function App() {
       }
       setSelectedTickets(new Set());
       setIsDeleteConfirmOpen(false);
-    } catch (e: any) {
-      console.error('Delete tickets error:', e.message || 'Unknown error');
-      triggerToast('Error deleting vouchers: ' + (e.message || 'Unknown error'));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Delete tickets error:', msg);
+      triggerToast('Error deleting vouchers: ' + msg);
     }
   };
 
@@ -268,9 +285,10 @@ export default function App() {
           triggerToast(`Synced ${newTickets.length} voucher(s) to Google Sheets!`);
         }
       }
-    } catch (e: any) {
-      console.error('Batch save error:', e.message || 'Unknown error');
-      triggerToast('Error saving imported vouchers: ' + (e.message || 'Unknown error'));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('Batch save error:', msg);
+      triggerToast('Error saving imported vouchers: ' + msg);
     }
   };
 
@@ -316,24 +334,25 @@ export default function App() {
 
 
   const handlePrintTicket = () => {
+    // Ensure fallbacks are present so printing is never blocked
     if (!ticketData.date) {
-      triggerToast('Issue Date is mandatory.');
-      return;
+      setTicketData(prev => ({ ...prev, date: new Date().toLocaleDateString('en-GB') }));
     }
     if (!ticketData.pax) {
-      triggerToast('PAX is mandatory.');
-      return;
-    }
-    if (!ticketData.ticketNo) {
-      triggerToast('Ticket No. is mandatory.');
-      return;
+      setTicketData(prev => ({ ...prev, pax: '1' }));
     }
 
     setBulkPrintTickets(null);
     setMobileTab('preview');
-    requestAnimationFrame(() => {
-      window.print();
-    });
+
+    setTimeout(() => {
+      try {
+        window.print();
+      } catch (err: unknown) {
+        console.warn('Direct print blocked by sandbox iframe:', err);
+        triggerToast('Print blocked by browser or preview frame.');
+      }
+    }, 100);
   };
 
   const handlePrintSelectedTickets = () => {
@@ -342,18 +361,20 @@ export default function App() {
 
     const selectedList = history.filter(t => selectedTickets.has(t.id)).map(t => ({
       ...t,
+      date: t.date || new Date().toLocaleDateString('en-GB'),
+      pax: t.pax || '1',
       issuerSignature: permanentSig || t.issuerSignature
     }));
-    const invalidTickets = selectedList.filter(t => !t.date || !t.pax || !t.ticketNo);
-    if (invalidTickets.length > 0) {
-      triggerToast(`${invalidTickets.length} selected voucher(s) missing required fields.`);
-      return;
-    }
 
     setBulkPrintTickets(selectedList);
-    requestAnimationFrame(() => {
-      setTimeout(() => window.print(), 0);
-    });
+    setTimeout(() => {
+      try {
+        window.print();
+      } catch (err: unknown) {
+        console.warn('Direct bulk print blocked by sandbox iframe:', err);
+        triggerToast('Print blocked by browser or preview frame.');
+      }
+    }, 100);
   };
 
   useEffect(() => {
@@ -391,8 +412,11 @@ export default function App() {
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 VOUCHER_ACTIVE
               </span>
+              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200/80 rounded-md tracking-tight shadow-2xs">
+                v{APP_VERSION}
+              </span>
             </h1>
-            <p className="text-[10px] md:text-[11px] text-slate-500 font-semibold tracking-wide mt-0.5">Ticketing & Reservations Portal</p>
+            <p className="text-[10px] md:text-[11px] text-slate-500 font-semibold tracking-wide mt-0.5">Ticketing & Reservations Portal • v{APP_VERSION}</p>
           </div>
         </div>
 
@@ -413,31 +437,49 @@ export default function App() {
           <span className="h-5 w-px bg-slate-200 mx-0.5 hidden xl:block" />
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center xl:justify-end gap-1.5 sm:gap-2">
+            {/* Daily Sales Dashboard */}
+            <button
+              onClick={() => setIsDashboardModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-indigo-700/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
+              title="Sales & Profit Analytics Dashboard"
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-indigo-200" />
+              <span>Dashboard</span>
+            </button>
+
+            {/* Google Sheets */}
             <button
               onClick={() => setIsSheetsModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-emerald-800/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-emerald-800/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
               title="Connect & Sync to Google Sheets"
             >
               <Table className="w-3.5 h-3.5 text-emerald-300" />
-              Google Sheets
+              <span className="hidden sm:inline">Google Sheets</span>
+              <span className="sm:hidden">Sheets</span>
             </button>
+
+            {/* Import CSV */}
             <button
               onClick={() => setIsCsvModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-emerald-600/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-emerald-600/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
               title="Create vouchers from CSV manifest"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-white" />
-              Import CSV
+              <span>Import CSV</span>
             </button>
+
+            {/* Print */}
             <button
               onClick={handlePrintTicket}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl font-bold shadow-xs hover:shadow-md active:scale-[0.98] transition-all text-xs cursor-pointer"
-              title="Print current voucher"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl font-bold shadow-xs hover:shadow-md active:scale-[0.98] transition-all text-xs cursor-pointer"
+              title="Print active sheet"
             >
               <Printer className="w-3.5 h-3.5 text-slate-700" />
-              Print
+              <span>Print</span>
             </button>
+
+            {/* Save Voucher */}
             <button
               onClick={handleSaveTicket}
               className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xs hover:shadow-md hover:shadow-blue-600/20 active:scale-[0.98] transition-all text-xs cursor-pointer"
@@ -648,11 +690,67 @@ export default function App() {
           
           {/* Preview Toolbar */}
           <div className="bg-white border-b border-slate-200 px-4 py-2.5 md:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 select-none shrink-0">
-            <div className="flex items-center gap-2 flex-wrap justify-between sm:justify-start w-full sm:w-auto">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
-                <span className="text-xs font-bold text-slate-800 font-display">Live Interactive Form</span>
-                <span className="text-[11px] text-slate-400 font-medium hidden md:inline">| Click any section to edit directly</span>
+            <div className="flex items-center gap-2.5 flex-wrap justify-between sm:justify-start w-full sm:w-auto">
+              {/* Document Mode Switcher (Ticket Voucher vs Invoice Mode) */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
+                <button
+                  onClick={() => setViewMode('voucher')}
+                  className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'voucher'
+                      ? 'bg-white text-blue-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="A4 Air Ticket Voucher Billing Sheet"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Ticket Voucher</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('invoice')}
+                  className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'invoice'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Official Agency Invoice"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Invoice Mode</span>
+                </button>
+              </div>
+
+              {/* Show Discount quick toggle when in Invoice Mode */}
+              {viewMode === 'invoice' && (
+                <button
+                  onClick={() => {
+                    const next = !ticketData.showDiscount;
+                    let defaultDisc = ticketData.discount || '';
+                    if (next && (!defaultDisc || defaultDisc === '0')) {
+                      const g = parseFloat(ticketData.gross) || 0;
+                      const s = parseFloat(ticketData.salesAmount) || 0;
+                      defaultDisc = (g > s && s > 0) ? Math.round(g - s).toString() : '1000';
+                    }
+                    setTicketData(prev => ({
+                      ...prev,
+                      showDiscount: next,
+                      discount: defaultDisc,
+                    }));
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                    ticketData.showDiscount
+                      ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                  title="Toggle discount line on invoice"
+                >
+                  <BadgePercent className={`w-3.5 h-3.5 ${ticketData.showDiscount ? 'text-rose-600' : 'text-slate-500'}`} />
+                  <span>{ticketData.showDiscount ? 'Discount: Active' : 'Show Discount'}</span>
+                </button>
+              )}
+
+              <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{viewMode === 'voucher' ? 'Click fields on sheet to edit' : 'Official Agency Invoice • Auto-formatted'}</span>
               </div>
               
               {/* Mobile Tab Switcher */}
@@ -672,8 +770,18 @@ export default function App() {
               </div>
             </div>
 
-            {/* Scale Zoom Controls */}
+            {/* Scale Zoom & Printer Help Controls */}
             <div className={`items-center gap-2 ${mobileTab === 'form' ? 'hidden md:flex' : 'flex'}`}>
+              <button
+                type="button"
+                onClick={() => setIsPrinterHelpOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 hover:text-blue-700 border border-slate-300 rounded-lg text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+                title="Browser-specific print settings & troubleshooting guide"
+              >
+                <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
+                <span>Printer Help</span>
+              </button>
+
               <span className="text-xs font-semibold text-slate-500">Zoom:</span>
               <select
                 value={zoomScale}
@@ -727,14 +835,24 @@ export default function App() {
                 transformOrigin: 'top left',
               }}
             >
-              {/* Actual A4 ticket sheet component */}
-              <TicketPreview data={ticketData} onChange={setTicketData} />
+              {/* Renders active view: Ticket Voucher or Invoice */}
+              {viewMode === 'invoice' ? (
+                <InvoicePreview 
+                  data={ticketData} 
+                  onChange={setTicketData} 
+                />
+              ) : (
+                <TicketPreview 
+                  data={ticketData} 
+                  onChange={setTicketData} 
+                />
+              )}
             </div>
           </div>
 
           {/* Quick status bar */}
           <div className="bg-slate-50 border-t border-slate-300 px-5 py-2 text-[10px] text-slate-500 flex items-center justify-between select-none shrink-0">
-            <span>Dimensions: 210mm x 297mm (Standard ISO A4 Sheet)</span>
+            <span>Dimensions: 210mm x 297mm (Standard ISO A4 Sheet) • Mode: {viewMode === 'invoice' ? 'Official Invoice' : 'Air Ticket Voucher'}</span>
             <span className="font-medium text-slate-600">Zoom: {Math.round(zoomScale * 100)}%</span>
           </div>
 
@@ -744,14 +862,24 @@ export default function App() {
 
       {/* DEDICATED PRINT-ONLY NODE (Hidden on screen, becomes visible during print) */}
       <div className={`print-only-container ${bulkPrintTickets ? '' : 'is-active-print'}`} id="ticket-pdf-target">
-        <TicketPreview data={ticketData} isPrinting={true} />
+        <div className="print-page">
+          {viewMode === 'invoice' ? (
+            <InvoicePreview data={ticketData} isPrinting={true} />
+          ) : (
+            <TicketPreview data={ticketData} isPrinting={true} />
+          )}
+        </div>
       </div>
 
       {/* DEDICATED BULK PRINT NODE */}
       <div className={`print-only-container ${bulkPrintTickets ? 'is-active-print' : ''}`}>
         {bulkPrintTickets?.map((ticket, index) => (
           <div className="print-page" key={`${ticket.id}-${index}`}>
-            <TicketPreview data={ticket} isPrinting={true} />
+            {viewMode === 'invoice' ? (
+              <InvoicePreview data={ticket} isPrinting={true} />
+            ) : (
+              <TicketPreview data={ticket} isPrinting={true} />
+            )}
           </div>
         ))}
       </div>
@@ -901,6 +1029,37 @@ export default function App() {
         onBatchSaveTickets={handleBatchSaveTickets}
         onToast={triggerToast}
       />
+
+
+      {/* Daily Sales & Profit Analytics Dashboard */}
+      <SalesDashboardModal
+        isOpen={isDashboardModalOpen}
+        onClose={() => setIsDashboardModalOpen(false)}
+        tickets={history}
+      />
+
+      {/* Printer Help & Browser Settings Overlay */}
+      <PrinterHelpModal
+        isOpen={isPrinterHelpOpen}
+        onClose={() => setIsPrinterHelpOpen(false)}
+        onTriggerPrint={handlePrintTicket}
+        currentMode={viewMode}
+      />
+
+
+      {/* Footer with App Version (no-print) */}
+      <footer className="no-print mt-auto py-3 px-4 text-center text-xs text-slate-500 border-t border-slate-200 bg-white/70 flex flex-col sm:flex-row items-center justify-between gap-2 max-w-7xl mx-auto w-full">
+        <span className="font-medium text-slate-600">
+          Hasnain Travels & Tours Ticketing Portal
+        </span>
+        <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+          <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-bold text-slate-700">
+            Version {APP_VERSION}
+          </span>
+          <span>•</span>
+          <span>Interactive Manifest & Fares</span>
+        </div>
+      </footer>
 
     </div>
   );

@@ -175,34 +175,62 @@ export function getTickets(): TicketData[] {
 }
 
 /**
+ * Normalizes ticket data ensuring no undefined values and at least 4 passenger name slots.
+ */
+export function normalizeTicket(ticket: TicketData): TicketData {
+  const normalized: TicketData = { ...ticket };
+  (Object.keys(normalized) as (keyof TicketData)[]).forEach((key) => {
+    if (normalized[key] === undefined) {
+      (normalized[key] as unknown) = '';
+    }
+  });
+
+  if (!normalized.paxNames || !Array.isArray(normalized.paxNames) || normalized.paxNames.length === 0) {
+    normalized.paxNames = ['', '', '', ''];
+  } else if (normalized.paxNames.length < 4) {
+    normalized.paxNames = [
+      normalized.paxNames[0] || '',
+      normalized.paxNames[1] || '',
+      normalized.paxNames[2] || '',
+      normalized.paxNames[3] || '',
+    ];
+  }
+
+  return normalized;
+}
+
+/**
+ * Finds index of an existing ticket by ID, Ticket Number, or PNR + Customer Name.
+ */
+function findMatchingTicketIndex(tickets: TicketData[], candidate: TicketData): number {
+  return tickets.findIndex((t) => {
+    if (t.id && candidate.id && t.id === candidate.id) return true;
+    if (t.ticketNo && candidate.ticketNo && t.ticketNo === candidate.ticketNo) return true;
+    if (
+      t.pnr && 
+      candidate.pnr && 
+      t.pnr.trim().toUpperCase() === candidate.pnr.trim().toUpperCase() && 
+      t.customerName === candidate.customerName
+    ) {
+      return true;
+    }
+    return false;
+  });
+}
+
+/**
  * Creates or updates a ticket record in Local Storage.
  */
 export function saveTicketRecord(ticket: TicketData): TicketData[] {
   const db = getDatabase();
-
-  const validTicket: TicketData = { ...ticket };
-  Object.keys(validTicket).forEach((key) => {
-    if ((validTicket as any)[key] === undefined) {
-      (validTicket as any)[key] = '';
-    }
-  });
-
-  if (!validTicket.paxNames || !Array.isArray(validTicket.paxNames) || validTicket.paxNames.length === 0) {
-    validTicket.paxNames = ['', '', '', ''];
-  }
-
-  const existingIdx = db.tickets.findIndex((t) => {
-    if (t.id && validTicket.id && t.id === validTicket.id) return true;
-    if (t.ticketNo && validTicket.ticketNo && t.ticketNo === validTicket.ticketNo) return true;
-    if (t.pnr && validTicket.pnr && t.pnr.trim().toUpperCase() === validTicket.pnr.trim().toUpperCase() && t.customerName === validTicket.customerName) return true;
-    return false;
-  });
+  const validTicket = normalizeTicket(ticket);
+  const existingIdx = findMatchingTicketIndex(db.tickets, validTicket);
 
   if (existingIdx >= 0) {
     db.tickets[existingIdx] = {
       ...db.tickets[existingIdx],
       ...validTicket,
-      id: db.tickets[existingIdx].id
+      id: db.tickets[existingIdx].id,
     };
   } else {
     db.tickets.unshift(validTicket);
@@ -222,30 +250,14 @@ export function saveMultipleTicketRecords(ticketsToSave: TicketData[]): TicketDa
   const db = getDatabase();
 
   for (const ticket of ticketsToSave) {
-    const validTicket: TicketData = { ...ticket };
-    Object.keys(validTicket).forEach((key) => {
-      if ((validTicket as any)[key] === undefined) {
-        (validTicket as any)[key] = '';
-      }
-    });
-
-    if (!validTicket.paxNames || !Array.isArray(validTicket.paxNames) || validTicket.paxNames.length === 0) {
-      validTicket.paxNames = ['', '', '', ''];
-    }
-
-    // Deduplicate by ID, Ticket Number, or PNR (if available)
-    const existingIdx = db.tickets.findIndex((t) => {
-      if (t.id && validTicket.id && t.id === validTicket.id) return true;
-      if (t.ticketNo && validTicket.ticketNo && t.ticketNo === validTicket.ticketNo) return true;
-      if (t.pnr && validTicket.pnr && t.pnr.trim().toUpperCase() === validTicket.pnr.trim().toUpperCase() && t.customerName === validTicket.customerName) return true;
-      return false;
-    });
+    const validTicket = normalizeTicket(ticket);
+    const existingIdx = findMatchingTicketIndex(db.tickets, validTicket);
 
     if (existingIdx >= 0) {
       db.tickets[existingIdx] = {
         ...db.tickets[existingIdx],
         ...validTicket,
-        id: db.tickets[existingIdx].id // preserve existing local ID
+        id: db.tickets[existingIdx].id, // preserve existing local ID
       };
     } else {
       db.tickets.unshift(validTicket);

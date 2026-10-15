@@ -42,7 +42,7 @@ export const TicketPreview: React.FC<TicketPreviewProps> = ({
   }, [data.cardNo, onChange]);
 
   // Helpers to update fields
-  const handleFieldChange = (field: keyof TicketData, value: any) => {
+  const handleFieldChange = <K extends keyof TicketData>(field: K, value: TicketData[K]) => {
     if (onChange) {
       const updated = calculateFareFields(data, field, value);
       onChange(updated);
@@ -217,15 +217,16 @@ export const TicketPreview: React.FC<TicketPreviewProps> = ({
   return (
     <div
       id="ticket-a4-sheet"
-      className={`bg-white print-container flex flex-col justify-between ${
+      className={`bg-white print-container relative flex flex-col justify-between ${
         !isPrinting ? 'shadow-2xl border border-gray-300' : 'border-none shadow-none'
       }`}
       style={{
-        width: '794px',
-        height: '1123px',
+        width: isPrinting ? '210mm' : '794px',
+        height: isPrinting ? '297mm' : '1123px',
+        maxHeight: isPrinting ? '297mm' : undefined,
         transform: isPrinting ? 'none' : `scale(${scale})`,
         transformOrigin: 'top center',
-        padding: '45px 45px',
+        padding: isPrinting ? '8mm 12mm' : '45px 45px',
         boxSizing: 'border-box',
       }}
     >
@@ -838,8 +839,7 @@ export const TicketPreview: React.FC<TicketPreviewProps> = ({
         </div>
 
         {/* Small authentic layout footer details */}
-        <div className="flex justify-between items-center mt-auto px-1 text-[8px] text-gray-400 font-mono select-none">
-          <span />
+        <div className="flex justify-end items-center mt-auto px-1 text-[8px] text-gray-400 font-mono select-none">
           <span>Printed on: {new Date().toLocaleDateString()}</span>
         </div>
       </div>

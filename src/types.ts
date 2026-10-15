@@ -32,12 +32,14 @@ export interface TicketData {
   exchangeRate: string;    // Exchange rate input
   contributionMargin: string; // Additional markup margin
   keepGrossFare: boolean;     // Flag to lock sales to gross fare
+  showDiscount?: boolean;     // Option to show discount on invoice
+  discount?: string;          // Discount amount in BDT
   createdAt: string;
 }
 
 export const emptyTicket: TicketData = {
   id: '',
-  customerName: 'New Client Receipt',
+  customerName: 'New Client Invoice',
   paxNames: ['', '', '', ''],
   carrier: '',
   date: '',
@@ -66,5 +68,7 @@ export const emptyTicket: TicketData = {
   exchangeRate: '',
   contributionMargin: '',
   keepGrossFare: false,
+  showDiscount: false,
+  discount: '',
   createdAt: '',
 };

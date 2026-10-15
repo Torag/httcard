@@ -14,7 +14,7 @@ export function MobileForm({ data, onChange, onFreshStart }: MobileFormProps) {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const sigInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFieldChange = (field: keyof TicketData, value: any) => {
+  const handleFieldChange = <K extends keyof TicketData>(field: K, value: TicketData[K]) => {
     const updated = calculateFareFields(data, field, value);
     onChange(updated);
   };
@@ -381,6 +381,51 @@ export function MobileForm({ data, onChange, onFreshStart }: MobileFormProps) {
               />
               <span className="text-xs font-bold text-slate-800">Keep Sales = Gross Fare?</span>
             </label>
+          </div>
+
+          {/* Show Discount on Invoice Option */}
+          <div className="flex flex-col gap-2 col-span-2 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  checked={data.showDiscount || false}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    let defaultDisc = data.discount || '';
+                    if (checked && (!defaultDisc || defaultDisc === '0')) {
+                      const g = parseFloat(data.gross) || 0;
+                      const s = parseFloat(data.salesAmount) || 0;
+                      defaultDisc = (g > s && s > 0) ? Math.round(g - s).toString() : '1000';
+                    }
+                    onChange({
+                      ...data,
+                      showDiscount: checked,
+                      discount: defaultDisc,
+                    });
+                  }}
+                  className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500"
+                />
+                <span className="text-xs font-bold text-amber-950">Show Discount on Invoice</span>
+              </label>
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-100/90 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Invoice Mode
+              </span>
+            </div>
+
+            {data.showDiscount && (
+              <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-amber-200/70">
+                <label className="text-[10px] font-bold text-amber-900 uppercase">Discount Amount (৳ BDT)</label>
+                <input 
+                  type="number" 
+                  value={data.discount || ''}
+                  onChange={(e) => handleFieldChange('discount', e.target.value)}
+                  placeholder="e.g. 1500"
+                  onFocus={handleFocus}
+                  className="w-full border border-amber-300 rounded-xl h-10 px-3 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/15 outline-none bg-white font-mono font-bold text-slate-900"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5 col-span-2">

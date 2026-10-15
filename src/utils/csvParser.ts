@@ -138,6 +138,254 @@ export function parseCSVText(csvText: string): string[][] {
 
 export type SalesAmountImportMode = 'csv' | 'gross' | 'net_plus_markup';
 
+export type CsvFieldKey = 
+  | 'passengerName'
+  | 'pnr'
+  | 'ticketNo'
+  | 'carrier'
+  | 'travelDate'
+  | 'route'
+  | 'returnDate'
+  | 'issueDate'
+  | 'co'
+  | 'salesAmount'
+  | 'gross'
+  | 'baseFare'
+  | 'tax'
+  | 'markUp'
+  | 'officePayment'
+  | 'phone'
+  | 'remarks'
+  | 'box2Remarks'
+  | 'type'
+  | 'pax';
+
+export interface ColumnDefinition {
+  key: CsvFieldKey;
+  label: string;
+  category: 'core' | 'fares' | 'details';
+  description: string;
+  aliases: string[];
+  required?: boolean;
+}
+
+export const CSV_COLUMN_DEFINITIONS: ColumnDefinition[] = [
+  // Core Ticket Information
+  {
+    key: 'passengerName',
+    label: 'Passenger Name',
+    category: 'core',
+    description: 'Name of the traveler/passenger',
+    aliases: ['name', 'passenger name', 'passenger', 'pax name', 'pax', 'client name'],
+    required: true,
+  },
+  {
+    key: 'pnr',
+    label: 'PNR / Booking Ref',
+    category: 'core',
+    description: 'Airline record locator / PNR booking code',
+    aliases: ['pnr', 'record locator', 'booking ref', 'pnr no', 'reservation'],
+  },
+  {
+    key: 'ticketNo',
+    label: 'Ticket Number',
+    category: 'core',
+    description: '10-13 digit e-ticket number',
+    aliases: ['ticket number', 'ticket no', 'ticket', 'tkt no', 'ticket_no', 'e-ticket', 'tkt'],
+    required: true,
+  },
+  {
+    key: 'carrier',
+    label: 'Airline / Carrier Code',
+    category: 'core',
+    description: 'IATA airline code (e.g. BG, SV, EK, QR, BS)',
+    aliases: ['air code', 'air', 'airline', 'carrier', 'airline code', 'flight code'],
+  },
+  {
+    key: 'travelDate',
+    label: 'Travel Date / Flight Info',
+    category: 'core',
+    description: 'Departure flight date',
+    aliases: ['travel date', 'flight date', 'fly date', 'dept date', 'departure date', 'flight'],
+  },
+  {
+    key: 'route',
+    label: 'Route / Sectors',
+    category: 'core',
+    description: 'Airport origin and destination codes (e.g. CGP-DAC)',
+    aliases: ['route', 'sector', 'sectors', 'destination', 'itinerary'],
+  },
+
+  // Fares & Pricing
+  {
+    key: 'salesAmount',
+    label: 'Sales Amount (BDT)',
+    category: 'fares',
+    description: 'Total selling amount in BDT charged to passenger/client',
+    aliases: [
+      'sales amount (bdt)',
+      'sales amount bdt',
+      'sales amount',
+      'sales (bdt)',
+      'sales bdt',
+      'sales amt',
+      'sales_amount_bdt',
+      'sales_amount',
+      'sale amount (bdt)',
+      'sale amount bdt',
+      'sale amount',
+      'sale amt',
+      'selling price (bdt)',
+      'selling price',
+      'selling amount (bdt)',
+      'selling amount',
+      'sales',
+      'sale',
+      'client fare',
+      'customer fare'
+    ],
+  },
+  {
+    key: 'gross',
+    label: 'Total / Gross Fare (BDT)',
+    category: 'fares',
+    description: 'Total airline published fare (Base Fare + Tax)',
+    aliases: ['total fare', 'total', 'gross fare', 'gross', 'total fare bdt', 'gross bdt', 'total_fare'],
+  },
+  {
+    key: 'baseFare',
+    label: 'Base Fare (BDT)',
+    category: 'fares',
+    description: 'Base ticket fare before taxes',
+    aliases: ['base fare', 'base', 'basic fare', 'base fare bdt', 'base_fare'],
+  },
+  {
+    key: 'tax',
+    label: 'Tax Amount (BDT)',
+    category: 'fares',
+    description: 'Airport and government taxes',
+    aliases: ['tax amount', 'tax', 'taxes', 'tax_amount', 'tax bdt'],
+  },
+  {
+    key: 'markUp',
+    label: 'Mark Up / Margin (BDT)',
+    category: 'fares',
+    description: 'Profit markup or contribution margin',
+    aliases: ['mark up', 'markup', 'margin', 'contribution margin', 'contribution_margin', 'profit', 'cm'],
+  },
+  {
+    key: 'officePayment',
+    label: 'Office Payment / Net (BDT)',
+    category: 'fares',
+    description: 'Net payable amount to ticketing consolidator or airline',
+    aliases: ['office payment', 'office', 'net fare', 'net amount', 'net', 'payment', 'airline net'],
+  },
+
+  // Additional Details
+  {
+    key: 'issueDate',
+    label: 'Issue Date',
+    category: 'details',
+    description: 'Date the voucher was issued',
+    aliases: ['issue date', 'date', 'issued', 'issue_date', 'booking date'],
+    required: true,
+  },
+  {
+    key: 'co',
+    label: 'C/O (Corporate / Client / Ref)',
+    category: 'details',
+    description: 'Care of account, client name, or sub-agent ref',
+    aliases: ['c/o', 'co', 'care of', 'client', 'ref', 'reference', 'corporate', 'm/s', 'agent'],
+  },
+  {
+    key: 'returnDate',
+    label: 'Return Date',
+    category: 'details',
+    description: 'Return flight date for two-way bookings',
+    aliases: ['return date', 'return', 'ret date', 'inbound date'],
+  },
+  {
+    key: 'phone',
+    label: 'Phone / Contact',
+    category: 'details',
+    description: 'Customer contact phone number',
+    aliases: ['phone', 'mobile', 'contact', 'tel', 'phone number', 'cell'],
+  },
+  {
+    key: 'remarks',
+    label: 'Remarks (Box 1)',
+    category: 'details',
+    description: 'Main remarks or booking notes',
+    aliases: ['remarks', 'remark', 'notes', 'note'],
+  },
+  {
+    key: 'box2Remarks',
+    label: 'Office Remarks (Box 2)',
+    category: 'details',
+    description: 'Second box accounting / office remarks',
+    aliases: ['box2 remarks', 'box 2 remarks', 'second remarks', 'ledger remarks', 'internal remarks'],
+  },
+  {
+    key: 'type',
+    label: 'Flight Type (D / I)',
+    category: 'details',
+    description: 'Domestic (D) or International (I)',
+    aliases: ['type', 'flight type', 'dom/int', 'd/i'],
+  },
+  {
+    key: 'pax',
+    label: 'PAX Count',
+    category: 'details',
+    description: 'Number of passengers on ticket',
+    aliases: ['pax count', 'pax total', 'no of pax', 'pax qty', 'seats'],
+  },
+];
+
+export function detectInitialColumnMapping(headers: string[]): Record<CsvFieldKey, string> {
+  const mapping: Record<CsvFieldKey, string> = {
+    passengerName: '',
+    pnr: '',
+    ticketNo: '',
+    carrier: '',
+    travelDate: '',
+    route: '',
+    returnDate: '',
+    issueDate: '',
+    co: '',
+    salesAmount: '',
+    gross: '',
+    baseFare: '',
+    tax: '',
+    markUp: '',
+    officePayment: '',
+    phone: '',
+    remarks: '',
+    box2Remarks: '',
+    type: '',
+    pax: '',
+  };
+
+  if (!headers || headers.length === 0) return mapping;
+  const lowerHeaders = headers.map(h => h.trim().toLowerCase());
+
+  CSV_COLUMN_DEFINITIONS.forEach(def => {
+    // 1. Exact match against aliases
+    const exactIdx = lowerHeaders.findIndex(h => def.aliases.some(a => h === a));
+    if (exactIdx >= 0) {
+      mapping[def.key] = headers[exactIdx].trim();
+      return;
+    }
+    // 2. Partial substring match
+    const partialIdx = lowerHeaders.findIndex(h => def.aliases.some(a => h.includes(a)));
+    if (partialIdx >= 0) {
+      mapping[def.key] = headers[partialIdx].trim();
+      return;
+    }
+  });
+
+  return mapping;
+}
+
 export interface CsvImportOptions {
   groupByPnr?: boolean;
   logo?: string;
@@ -145,6 +393,7 @@ export interface CsvImportOptions {
   salesAmountColumn?: string; // Specific header name selected by user, or empty for auto-detect
   salesAmountMode?: SalesAmountImportMode; // 'csv' (use column), 'gross' (set equal to gross), 'net_plus_markup'
   customMarkupBDT?: string; // Optional custom markup per ticket
+  columnMapping?: Partial<Record<CsvFieldKey, string>>; // Interactive full column mapping
 }
 
 export function extractCsvHeaders(csvText: string): string[] {
@@ -172,6 +421,7 @@ export function parseCsvToRecords(
   const salesAmountMode = options.salesAmountMode || 'csv';
   const salesAmountColumn = options.salesAmountColumn?.trim().toLowerCase() || '';
   const customMarkupBDT = options.customMarkupBDT ? parseFloat(options.customMarkupBDT) || 0 : 0;
+  const columnMapping = options.columnMapping || {};
 
   let rows = parseCSVText(csvText);
   if (rows.length < 2) return [];
@@ -188,6 +438,16 @@ export function parseCsvToRecords(
     return headers.findIndex(h => possibleNames.some(p => h.includes(p)));
   };
 
+  const getMappedIndex = (fieldKey: CsvFieldKey, defaultAliases: string[]): number => {
+    const mappedHeader = columnMapping[fieldKey];
+    if (mappedHeader === '__none__') return -1;
+    if (mappedHeader && mappedHeader !== '__auto__') {
+      const idx = headers.findIndex(h => h === mappedHeader.trim().toLowerCase());
+      if (idx >= 0) return idx;
+    }
+    return getIndex(defaultAliases);
+  };
+
   const parseBool = (value: string) => {
     const normalized = value.trim().toLowerCase();
     return ['1', 'true', 'yes', 'y', 'gross', 'locked'].includes(normalized);
@@ -199,34 +459,34 @@ export function parseCsvToRecords(
     return parsed > 0 ? Math.round(parsed).toString() : '';
   };
 
-  const idxIssueDate = getIndex(['issue date', 'date', 'issued']);
-  const idxPnr = getIndex(['pnr']);
+  const idxIssueDate = getMappedIndex('issueDate', ['issue date', 'date', 'issued']);
+  const idxPnr = getMappedIndex('pnr', ['pnr']);
   const idxCustomerName = getIndex(['customer name', 'client name', 'saved name']);
-  const idxName = getIndex(['name', 'passenger', 'pax']);
+  const idxName = getMappedIndex('passengerName', ['name', 'passenger', 'pax']);
   const idxPaxName1 = getIndex(['pax name 1', 'passenger 1', 'pax1', 'pax 1']);
   const idxPaxName2 = getIndex(['pax name 2', 'passenger 2', 'pax2', 'pax 2']);
   const idxPaxName3 = getIndex(['pax name 3', 'passenger 3', 'pax3', 'pax 3']);
   const idxPaxName4 = getIndex(['pax name 4', 'passenger 4', 'pax4', 'pax 4']);
-  const idxTicketNo = getIndex(['ticket number', 'ticket no', 'ticket']);
-  const idxType = getIndex(['type']);
-  const idxAirCode = getIndex(['air code', 'air', 'airline', 'carrier']);
-  const idxTravelDate = getIndex(['travel date', 'flight date', 'fly date']);
-  const idxRoute = getIndex(['route', 'sector']);
-  const idxBaseFare = getIndex(['base fare', 'base']);
-  const idxTaxAmount = getIndex(['tax amount', 'tax']);
-  const idxTotalFare = getIndex(['total fare', 'total', 'gross']);
-  const idxGross = getIndex(['gross fare', 'gross']);
+  const idxTicketNo = getMappedIndex('ticketNo', ['ticket number', 'ticket no', 'ticket']);
+  const idxType = getMappedIndex('type', ['type']);
+  const idxAirCode = getMappedIndex('carrier', ['air code', 'air', 'airline', 'carrier']);
+  const idxTravelDate = getMappedIndex('travelDate', ['travel date', 'flight date', 'fly date']);
+  const idxRoute = getMappedIndex('route', ['route', 'sector']);
+  const idxBaseFare = getMappedIndex('baseFare', ['base fare', 'base']);
+  const idxTaxAmount = getMappedIndex('tax', ['tax amount', 'tax']);
+  const idxTotalFare = getMappedIndex('gross', ['total fare', 'total', 'gross']);
+  const idxGross = idxTotalFare;
   const idxCommission = getIndex(['commission', 'comm']);
   const idxAit = getIndex(['ait']);
   const idxNet = getIndex(['net amount', 'net']);
 
-  // Handle Sales Amount (BDT) specific column selection or auto-detection
+  // Handle Sales Amount (BDT) specific column selection or interactive mapping or auto-detection
   let idxSalesAmount = -1;
   if (salesAmountColumn) {
     idxSalesAmount = headers.findIndex(h => h === salesAmountColumn);
   }
   if (idxSalesAmount < 0) {
-    idxSalesAmount = getIndex([
+    idxSalesAmount = getMappedIndex('salesAmount', [
       'sales amount (bdt)',
       'sales amount bdt',
       'sales amount',
@@ -251,16 +511,16 @@ export function parseCsvToRecords(
     ]);
   }
 
-  const idxMarkUp = getIndex(['mark up', 'markup', 'margin', 'contribution margin', 'contribution_margin', 'contribution', 'cm']);
-  const idxOfficePayment = getIndex(['office payment', 'office', 'net', 'payment']);
-  const idxRef = getIndex(['ref', 'reference', 'c/o']);
-  const idxCo = getIndex(['c/o', 'co', 'care of', 'client', 'm/s']);
-  const idxRemarks = getIndex(['remarks', 'remark']);
-  const idxBox2Remarks = getIndex(['box2 remarks', 'box 2 remarks', 'second remarks', 'ledger remarks']);
-  const idxPhone = getIndex(['phone', 'mobile', 'contact']);
-  const idxReturnDate = getIndex(['return date', 'return']);
+  const idxMarkUp = getMappedIndex('markUp', ['mark up', 'markup', 'margin', 'contribution margin', 'contribution_margin', 'contribution', 'cm']);
+  const idxOfficePayment = getMappedIndex('officePayment', ['office payment', 'office', 'net', 'payment']);
+  const idxRef = getIndex(['ref', 'reference']);
+  const idxCo = getMappedIndex('co', ['c/o', 'co', 'care of', 'client', 'm/s']);
+  const idxRemarks = getMappedIndex('remarks', ['remarks', 'remark']);
+  const idxBox2Remarks = getMappedIndex('box2Remarks', ['box2 remarks', 'box 2 remarks', 'second remarks', 'ledger remarks']);
+  const idxPhone = getMappedIndex('phone', ['phone', 'mobile', 'contact']);
+  const idxReturnDate = getMappedIndex('returnDate', ['return date', 'return']);
   const idxCardNo = getIndex(['card no', 'card number', 'card']);
-  const idxPax = getIndex(['pax count', 'pax total', 'no of pax', 'pax']);
+  const idxPax = getMappedIndex('pax', ['pax count', 'pax total', 'no of pax', 'pax']);
   const idxForeignCurrency = getIndex(['foreign currency', 'currency']);
   const idxForeignAmount = getIndex(['foreign amount', 'foreign amt']);
   const idxExchangeRate = getIndex(['exchange rate', 'rate']);

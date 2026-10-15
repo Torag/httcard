@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { Table, Save, ExternalLink, CheckCircle, AlertCircle, RefreshCw, X, Copy, Check, Download } from 'lucide-react';
-import { getGoogleSheetsConfig, saveGoogleSheetsConfig, syncTicketsToGoogleSheets, fetchTicketsFromGoogleSheets } from '../services/googleSheets';
+import { 
+  getGoogleSheetsConfig, 
+  saveGoogleSheetsConfig, 
+  syncTicketsToGoogleSheets, 
+  fetchTicketsFromGoogleSheets,
+  normalizeScriptUrl 
+} from '../services/googleSheets';
 import { TicketData } from '../types';
 
 interface GoogleSheetsModalProps {
@@ -19,14 +25,28 @@ export function GoogleSheetsModal({ isOpen, onClose, historyTickets, onBatchSave
 
   if (!isOpen) return null;
 
+  const urlCheck = config.scriptUrl ? normalizeScriptUrl(config.scriptUrl) : null;
+
   const handleSaveConfig = () => {
-    saveGoogleSheetsConfig(config);
+    if (config.scriptUrl) {
+      const { url, error } = normalizeScriptUrl(config.scriptUrl);
+      if (error) {
+        onToast(error);
+        return;
+      }
+      const updated = { ...config, scriptUrl: url };
+      setConfig(updated);
+      saveGoogleSheetsConfig(updated);
+    } else {
+      saveGoogleSheetsConfig(config);
+    }
     onToast('Google Sheets settings saved successfully!');
   };
 
   const handleSyncAllNow = async () => {
-    if (!config.scriptUrl) {
-      onToast('Please enter a valid Google Apps Script Web App URL first.');
+    const { url, error } = normalizeScriptUrl(config.scriptUrl);
+    if (error || !url) {
+      onToast(error || 'Please enter a valid Google Apps Script Web App URL first.');
       return;
     }
     if (historyTickets.length === 0) {
@@ -35,7 +55,7 @@ export function GoogleSheetsModal({ isOpen, onClose, historyTickets, onBatchSave
     }
 
     setIsSyncing(true);
-    const res = await syncTicketsToGoogleSheets(historyTickets, config.scriptUrl);
+    const res = await syncTicketsToGoogleSheets(historyTickets, url);
     setIsSyncing(false);
 
     if (res.success) {
@@ -61,30 +81,114 @@ export function GoogleSheetsModal({ isOpen, onClose, historyTickets, onBatchSave
 }
 
 function doPost(e) {
+  // 1. Acquire mutex script lock to prevent race conditions during concurrent syncs
+  var lock = LockService.getScriptLock();
   try {
+    var hasLock = lock.tryLock(30000); // Wait up to 30s
+    if (!hasLock) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "error",
+        message: "Server busy: lock timeout."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var payload = JSON.parse(e.postData.contents);
+    var headers = [
+      "id", "date", "pnr", "customerName", "paxNames", "ticketNo",
+      "carrier", "flight", "sectors", "returnDate", "co", "remarks",
+      "box2Remarks", "phone", "baseFare", "tax", "gross", "salesAmount",
+      "commission", "ait", "net", "contributionMargin", "cardNo", "pax", "updatedAt"
+    ];
+
     if (sheet.getLastRow() === 0) {
-      var headers = ["id", "date", "pnr", "customerName", "paxNames", "ticketNo", "carrier", "flight", "sectors", "returnDate", "co", "remarks", "box2Remarks", "phone", "baseFare", "tax", "gross", "salesAmount", "commission", "ait", "net", "contributionMargin", "cardNo", "pax", "updatedAt"];
       sheet.appendRow(headers);
     }
+
     var items = Array.isArray(payload) ? payload : [payload];
+    if (items.length === 0) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", count: 0 })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 2. Index existing records by Unique Key (id, ticketNo, pnr)
+    var lastRow = sheet.getLastRow();
+    var keyMap = {}; // Maps unique key -> sheet row number (1-indexed)
+    if (lastRow > 1) {
+      var existingData = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+      for (var r = 0; r < existingData.length; r++) {
+        var rowNum = r + 2;
+        var rId = String(existingData[r][0] || "").trim();
+        var rPnr = String(existingData[r][2] || "").trim();
+        var rTkt = String(existingData[r][5] || "").trim();
+        if (rId) keyMap["id:" + rId] = rowNum;
+        if (rTkt) keyMap["tkt:" + rTkt] = rowNum;
+        if (rPnr && rPnr !== "N/A") keyMap["pnr:" + rPnr] = rowNum;
+      }
+    }
+
+    var inserted = 0;
+    var updated = 0;
+
+    // 3. Upsert each item: update existing matching row, or append new row
     items.forEach(function(item) {
-      var paxNamesStr = Array.isArray(item.paxNames) ? item.paxNames.filter(Boolean).join(", ") : (item.paxNames || "");
+      var paxNamesStr = Array.isArray(item.paxNames)
+        ? item.paxNames.filter(Boolean).join(", ")
+        : (item.paxNames || "");
+
+      var itemId = String(item.id || "").trim();
+      var itemPnr = String(item.pnr || "").trim();
+      var itemTkt = String(item.ticketNo || "").trim();
+
       var row = [
-        item.id || "", item.date || "", item.pnr || "", item.customerName || "",
-        paxNamesStr, item.ticketNo || "", item.carrier || "", item.flight || "",
+        itemId, item.date || "", itemPnr, item.customerName || "",
+        paxNamesStr, itemTkt, item.carrier || "", item.flight || "",
         item.sectors || "", item.returnDate || "", item.co || "", item.remarks || "",
         item.box2Remarks || "", item.phone || "", item.baseFare || "", item.tax || "",
         item.gross || "", item.salesAmount || "", item.commission || "", item.ait || "",
         item.net || "", item.contributionMargin || "", item.cardNo || "", item.pax || "1",
         item.updatedAt || new Date().toISOString()
       ];
-      sheet.appendRow(row);
+
+      var matchRow = null;
+      if (itemId && keyMap["id:" + itemId]) {
+        matchRow = keyMap["id:" + itemId];
+      } else if (itemTkt && keyMap["tkt:" + itemTkt]) {
+        matchRow = keyMap["tkt:" + itemTkt];
+      } else if (itemPnr && itemPnr !== "N/A" && keyMap["pnr:" + itemPnr]) {
+        matchRow = keyMap["pnr:" + itemPnr];
+      }
+
+      if (matchRow) {
+        // In-place update prevents duplicate rows
+        sheet.getRange(matchRow, 1, 1, row.length).setValues([row]);
+        updated++;
+      } else {
+        // Insert new row and record in lookup map
+        sheet.appendRow(row);
+        var newRow = sheet.getLastRow();
+        if (itemId) keyMap["id:" + itemId] = newRow;
+        if (itemTkt) keyMap["tkt:" + itemTkt] = newRow;
+        if (itemPnr && itemPnr !== "N/A") keyMap["pnr:" + itemPnr] = newRow;
+        inserted++;
+      }
     });
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", count: items.length })).setMimeType(ContentService.MimeType.JSON);
+
+    SpreadsheetApp.flush();
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "success",
+      count: items.length,
+      inserted: inserted,
+      updated: updated
+    })).setMimeType(ContentService.MimeType.JSON);
+
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    // 4. Release lock safely
+    lock.releaseLock();
   }
 }`;
 
@@ -95,13 +199,14 @@ function doPost(e) {
   };
 
   const handleFetchFromSheets = async () => {
-    if (!config.scriptUrl) {
-      onToast('Please enter a valid Google Apps Script Web App URL first.');
+    const { url, error } = normalizeScriptUrl(config.scriptUrl);
+    if (error || !url) {
+      onToast(error || 'Please enter a valid Google Apps Script Web App URL first.');
       return;
     }
 
     setIsFetching(true);
-    const res = await fetchTicketsFromGoogleSheets(config.scriptUrl);
+    const res = await fetchTicketsFromGoogleSheets(url);
     setIsFetching(false);
 
     if (res.success && res.tickets.length > 0) {
@@ -110,7 +215,7 @@ function doPost(e) {
     } else if (res.success) {
       onToast('No ticket records found in Google Sheets.');
     } else {
-      onToast(`Fetch failed: ${res.message}`);
+      onToast(`Fetch notice: ${res.message}`);
     }
   };
 
@@ -146,16 +251,37 @@ function doPost(e) {
           
           {/* Web App URL Input */}
           <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-2xs flex flex-col gap-3">
-            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              Google Apps Script Web App URL
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                Google Apps Script Web App URL
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono">
+                Must end with <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">/exec</code>
+              </span>
+            </div>
             <input
               type="text"
               value={config.scriptUrl}
               onChange={(e) => setConfig({ ...config, scriptUrl: e.target.value })}
+              onBlur={() => {
+                if (config.scriptUrl) {
+                  const { url } = normalizeScriptUrl(config.scriptUrl);
+                  if (url && url !== config.scriptUrl) {
+                    setConfig({ ...config, scriptUrl: url });
+                  }
+                }
+              }}
               placeholder="https://script.google.com/macros/s/.../exec"
               className="w-full text-xs font-mono p-3 border border-slate-300 rounded-xl focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none bg-slate-50/50"
             />
+
+            {/* URL Validation Notice */}
+            {urlCheck?.error && (
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>{urlCheck.error}</span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between pt-1">
               <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
@@ -170,7 +296,7 @@ function doPost(e) {
 
               <button
                 onClick={handleSaveConfig}
-                className="px-3.5 py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg transition-all flex items-center gap-1.5"
+                className="px-3.5 py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
                 Save Settings
@@ -232,6 +358,11 @@ function doPost(e) {
                 {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedCode ? 'Copied!' : 'Copy Script Code'}
               </button>
+            </div>
+
+            <div className="bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-lg flex items-center gap-2 text-[11px] text-emerald-800 font-medium">
+              <span>🛡️</span>
+              <span><strong>Built-in Deduplication & Mutex Lock:</strong> Re-syncing or network retries will safely update matching existing rows (by ID, Ticket No, or PNR) rather than creating duplicate rows.</span>
             </div>
 
             <ol className="text-xs text-slate-600 list-decimal pl-4 flex flex-col gap-1 font-medium">

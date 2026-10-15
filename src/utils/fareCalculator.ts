@@ -1,7 +1,11 @@
 import { TicketData } from '../types';
 
-export function calculateFareFields(data: TicketData, updatedField: keyof TicketData, value: any): TicketData {
-  let updated = { ...data, [updatedField]: value };
+export function calculateFareFields<K extends keyof TicketData>(
+  data: TicketData, 
+  updatedField: K, 
+  value: TicketData[K]
+): TicketData {
+  const updated: TicketData = { ...data, [updatedField]: value };
   
   if (
     updatedField === 'baseFare' || 
