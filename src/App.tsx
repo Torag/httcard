@@ -750,7 +750,7 @@ export default function App() {
 
               <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>{viewMode === 'voucher' ? 'Click fields on sheet to edit' : 'Official Agency Invoice • Auto-formatted'}</span>
+                <span>{viewMode === 'voucher' ? 'Click fields on voucher to edit' : 'Click fields on invoice to edit • Live Sync'}</span>
               </div>
               
               {/* Mobile Tab Switcher */}

@@ -34,6 +34,17 @@ export interface TicketData {
   keepGrossFare: boolean;     // Flag to lock sales to gross fare
   showDiscount?: boolean;     // Option to show discount on invoice
   discount?: string;          // Discount amount in BDT
+  invoiceItemDesc?: string;   // Customizable line item description
+  invoiceBankName?: string;   // Customizable Bank Name
+  invoiceAccountName?: string;// Customizable A/C Name
+  invoiceBranch?: string;     // Customizable Branch
+  invoiceAccountNo?: string;  // Customizable Account No
+  invoicePaymentRef?: string; // Customizable payment instructions
+  invoiceTicketRules?: string;// Customizable ticket rules
+  invoiceTravelDocs?: string; // Customizable travel documents
+  invoiceOfficialDoc?: string;// Customizable official document note
+  hideBankDetails?: boolean;  // Option to hide bank details box
+  hideTerms?: boolean;        // Option to hide terms & conditions
   createdAt: string;
 }
 
